@@ -199,19 +199,22 @@ class AppMigration:
         """Migrate all apps from the old server to the new server."""
         apps = self.fetch_all_apps()
         for app in apps:
-            if app["slug"] == "dashauth-test":
-                self.clone_app(app)
 
-
-def main():
-    old_deurl = os.getenv("OLD_DEURL")
-    new_deurl = os.getenv("NEW_DEURL")
-    username = os.getenv("USERNAME")
-    password = os.getenv("PASSWORD")
-
-    migration = AppMigration(old_deurl, new_deurl, username, password, username, password)
-    migration.migrate_apps()
+            #! Recommended to first test on a subset of Applications using this if statement
+            #if app["slug"] == "dashauth-test":
+            self.clone_app(app)
 
 
 if __name__ == "__main__":
-    main()
+
+
+    old_deurl = os.getenv("OLD_DEURL")
+    old_username = os.getenv("OLD_USERNAME")
+    old_password = os.getenv("OLD_PASSWORD")
+
+    new_deurl = os.getenv("NEW_DEURL")
+    new_username = os.getenv("NEW_USERNAME")
+    new_password = os.getenv("NEW_PASSWORD")
+
+    migration = AppMigration(old_deurl, new_deurl, old_username, old_password, new_username, new_password)
+    migration.migrate_apps()
