@@ -1,6 +1,8 @@
 import os
-from gql import gql
+import subprocess
 from datetime import datetime, timedelta
+from gql import gql
+
 from client import get_client
 from queries import (
     GET_APP_BASIC_INFO,
@@ -8,7 +10,7 @@ from queries import (
     GET_ENV_VARIABLES,
     CREATE_APP_MUTATION,
     UPDATE_APP_MUTATION,
-    CREATE_SERVICE_MUTATION
+    CREATE_SERVICE_MUTATION,
 )
 
 # Protected environment variables that should not be overwritten
@@ -25,52 +27,46 @@ PROTECTED_ENV_KEYS = {
     "DATABASE_URL",
 }
 
-
+def run_command(command, cwd=None):
+    result = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"\n❌ Command failed: {command}")
+        print(result.stderr)
+    else:
+        lines = result.stdout.splitlines()
+        cleaned_lines = [
+            line for line in lines
+            if not line.startswith("Building your app:") and
+               not line.startswith("Deploying your app:") and
+               not line.startswith("Pushing your app to Dash Enterprise:") and
+               line.strip() != ""
+        ]
+        print(f"\n✅ Command succeeded: {command}")
+        print("\n".join(cleaned_lines))
 
 def fetch_all_apps():
     client = get_client()
     all_apps = []
-    filter_arg = {}
     last_created_at = None
 
     try:
         while True:
-            filter_arg = (
-                {
-                    "created_at": {
-                        "gt": last_created_at,
-                    },
-                }
-                if last_created_at
-                else {}
-            )
-
-            filter_arg = {"filter": filter_arg}
-
+            filter_arg = {"filter": {"created_at": {"gt": last_created_at}}} if last_created_at else {}
             result = client.execute(gql(GET_APP_BASIC_INFO), variable_values=filter_arg)
 
             apps = result["apps"]["nodes"]
             all_apps.extend(apps)
 
-            page_info = result["apps"]["pageInfo"]
-            if not page_info["hasNextPage"]:
+            if not result["apps"]["pageInfo"]["hasNextPage"]:
                 break
 
             last_created_at = apps[-1]["created_at"]
-
-            last_created_datetime = datetime.fromisoformat(
-                last_created_at.replace("Z", "+00:00")
-            )
-            new_last_created_datetime = last_created_datetime + timedelta(
-                milliseconds=1
-            )
-            last_created_at = new_last_created_datetime.isoformat().replace(
-                "+00:00", "Z"
-            )
+            dt = datetime.fromisoformat(last_created_at.replace("Z", "+00:00")) + timedelta(milliseconds=1)
+            last_created_at = dt.isoformat().replace("+00:00", "Z")
 
         return [
             {
-                "app_name": (app["title"] if app["title"] else app["slug"]),
+                "app_name": app["title"] or app["slug"],
                 "author": app["author"]["username"],
                 "slug": app["slug"],
                 "created_at": datetime.fromisoformat(app["created_at"].replace("Z", "+00:00")).strftime("%Y-%m-%d"),
@@ -82,22 +78,16 @@ def fetch_all_apps():
         return []
 
 def fetch_services_for_app(slug):
-    variables = {"slug": slug}
-    client = get_client()
-
     try:
-        result = client.execute(gql(GET_APP_SERVICES), variable_values=variables)
+        result = get_client().execute(gql(GET_APP_SERVICES), variable_values={"slug": slug})
         return result["app"]["services"]
     except Exception as e:
         print(f"Error fetching services for app {slug}: {str(e)}")
         return []
 
 def fetch_env_vars_for_app(slug):
-    variables = {"slug": slug}
-    client = get_client()
-
     try:
-        result = client.execute(gql(GET_ENV_VARIABLES), variable_values=variables)
+        result = get_client().execute(gql(GET_ENV_VARIABLES), variable_values={"slug": slug})
         return result["app"]["environment_variables"]
     except Exception as e:
         print(f"Error fetching env vars for app {slug}: {str(e)}")
@@ -105,89 +95,67 @@ def fetch_env_vars_for_app(slug):
 
 def filter_protected_env_vars(env_vars):
     return [
-        {
-            "key": var["key"],
-            "value": var["value"],
-            "description": var.get("description", ""),
-        }
-        for var in env_vars
-        if var["key"] not in PROTECTED_ENV_KEYS
+        {"key": var["key"], "value": var["value"], "description": var.get("description", "")}
+        for var in env_vars if var["key"] not in PROTECTED_ENV_KEYS
     ]
 
 def create_new_app(input_data):
-    client = get_client()
-
-    mutation = gql(CREATE_APP_MUTATION)
-
-    variables = {
-        "input": {
-            "app": input_data
-        }
-    }
-
     try:
-        result = client.execute(mutation, variable_values=variables)
-        app_data = result["createOneApp"]
-        print(f"App created: {app_data['title']} (ID: {app_data['app_id']})")
-        return app_data
+        result = get_client().execute(gql(CREATE_APP_MUTATION), variable_values={"input": {"app": input_data}})
+        return result["createOneApp"]
     except Exception as e:
         print(f"Error creating app: {e}")
         return None
 
 def update_app_env_vars(app_id, filtered_env_vars):
-    client = get_client()
-
-    mutation = gql(UPDATE_APP_MUTATION)
-
-    variables = {
-        "input": {
-            "id": app_id,
-            "app": {
-                "environment_variables": filtered_env_vars
-            }
-        }
-    }
-
     try:
-        result = client.execute(mutation, variable_values=variables)
-        print(f"Updated env vars for app {app_id}")
+        get_client().execute(gql(UPDATE_APP_MUTATION), variable_values={
+            "input": {
+                "id": app_id,
+                "app": {"environment_variables": filtered_env_vars}
+            }
+        })
+        print(f"✅ Updated env vars for app {app_id}")
     except Exception as e:
         print(f"Error updating env vars for app {app_id}: {e}")
 
 def add_services_to_app(app_id, services):
-    client = get_client()
-
     for service in services:
-        service_input = {
-            "type": service["type"],
-            "name": service["name"],
-            "config": service["config"],
-            "app_id": app_id
-        }
-
-        mutation = gql(CREATE_SERVICE_MUTATION)
-
-        variables = {"input": service_input}
-
         try:
-            result = client.execute(mutation, variable_values=variables)
-            print(f"Service {service['name']} added to app {app_id}")
+            get_client().execute(gql(CREATE_SERVICE_MUTATION), variable_values={
+                "input": {
+                    "type": service["type"],
+                    "name": service["name"],
+                    "config": service["config"],
+                    "app_id": app_id
+                }
+            })
+            print(f"✅ Service {service['name']} added to app {app_id}")
         except Exception as e:
             print(f"Error adding service {service['name']} to app {app_id}: {e}")
 
+def clone_and_deploy_repo(slug):
+    de_url = os.getenv("DEURL", "https://tam.plotly.host")
+    repo_url = f"https://{de_url}/GIT/{slug}"
+    clone_dir = f"./repos/{slug}-repo"
+    new_slug = f"{slug}-copy"
+
+    print(f"🔁 Cloning repo from {repo_url} into {clone_dir}")
+    run_command(f"git clone {repo_url} {clone_dir}")
+
+    print(f"🚀 Deploying app to Dash Enterprise with slug '{new_slug}'")
+    run_command(f"de deploy {clone_dir} --name {new_slug} -y")
+
 def clone_app(app_data):
-    # Fetch original app's details
     slug = app_data["slug"]
-    original_services = fetch_services_for_app(slug)
-    original_env_vars = fetch_env_vars_for_app(slug)
+    services = fetch_services_for_app(slug)
+    env_vars = fetch_env_vars_for_app(slug)
+    filtered_env_vars = filter_protected_env_vars(env_vars)
 
-    # Filter out protected environment variables
-    filtered_env_vars = filter_protected_env_vars(original_env_vars)
-
-    # Prepare input for the new app (this should come from your app_data)
+    new_slug = f"{slug}-copy"
     input_data = {
         "title": app_data["app_name"],
-        "slug": f"{app_data['slug']}-copy",
+        "slug": new_slug,
         "description": f"Cloned app from {app_data['author']} on {datetime.now().isoformat()}",
         "visible_on_portal": True,
         "maintainer_name": app_data["author"],
@@ -198,23 +166,18 @@ def clone_app(app_data):
         "python_version": "3.10",
     }
 
-    # Create the new app
     new_app = create_new_app(input_data)
     if not new_app:
         return
 
-    # Update the environment variables for the new app
     update_app_env_vars(new_app["app_id"], filtered_env_vars)
+    add_services_to_app(new_app["app_id"], services)
+    clone_and_deploy_repo(slug)
 
-    # Add services to the new app
-    add_services_to_app(new_app["app_id"], original_services)
-
-# Main function to drive the cloning process
 def main():
     apps = fetch_all_apps()
-
     for app in apps:
-        if app['slug'] == 'dashauth-test':
+        if app["slug"] == "dashauth-test":
             clone_app(app)
 
 if __name__ == "__main__":
