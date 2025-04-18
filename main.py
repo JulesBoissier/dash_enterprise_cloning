@@ -2,6 +2,14 @@ import os
 from gql import gql
 from datetime import datetime, timedelta
 from client import get_client
+from queries import (
+    GET_APP_BASIC_INFO,
+    GET_APP_SERVICES,
+    GET_ENV_VARIABLES,
+    CREATE_APP_MUTATION,
+    UPDATE_APP_MUTATION,
+    CREATE_SERVICE_MUTATION
+)
 
 # Protected environment variables that should not be overwritten
 PROTECTED_ENV_KEYS = {
@@ -17,76 +25,7 @@ PROTECTED_ENV_KEYS = {
     "DATABASE_URL",
 }
 
-# 1. GraphQL Queries
-GET_APP_BASIC_INFO = """
-query getApps($filter: AppFilter) {
-  apps(filter: $filter) {
-    nodes {
-      title
-      slug
-      created_at
-      author {
-        username
-      }
-    }
-    pageInfo {
-      hasNextPage
-    }
-  }
-}
-"""
 
-GET_APP_SERVICES = """
-query getServices($slug: String!) {
-  app(slug: $slug) {
-    services {
-      type
-      name
-      config
-    }
-  }
-}
-"""
-
-GET_ENV_VARIABLES = """
-query getEnvVars($slug: String!) {
-  app(slug: $slug) {
-    environment_variables {
-      key
-      value
-      description
-    }
-  }
-}
-"""
-
-CREATE_APP_MUTATION = """
-mutation createApp($input: CreateOneAppInput!) {
-  createOneApp(input: $input) {
-    app_id
-    title
-    slug
-    created_at
-  }
-}
-"""
-
-UPDATE_APP_MUTATION = """
-mutation updateApp($input: AppUpdate!) {
-  updateOneApp(input: $input) {
-    app_id
-  }
-}
-"""
-
-CREATE_SERVICE_MUTATION = """
-mutation createService($input: ServiceInput!) {
-  createOneService(input: $input) {
-    service_id
-    name
-  }
-}
-"""
 
 # 2. Fetch the basic info of all apps
 def fetch_all_apps():
