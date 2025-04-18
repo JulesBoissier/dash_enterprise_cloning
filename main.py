@@ -27,7 +27,6 @@ PROTECTED_ENV_KEYS = {
 
 
 
-# 2. Fetch the basic info of all apps
 def fetch_all_apps():
     client = get_client()
     all_apps = []
@@ -82,7 +81,6 @@ def fetch_all_apps():
         print(f"Error fetching app basic info: {str(e)}")
         return []
 
-# 3. Fetch services for a given app
 def fetch_services_for_app(slug):
     variables = {"slug": slug}
     client = get_client()
@@ -94,7 +92,6 @@ def fetch_services_for_app(slug):
         print(f"Error fetching services for app {slug}: {str(e)}")
         return []
 
-# 4. Fetch environment variables for a given app
 def fetch_env_vars_for_app(slug):
     variables = {"slug": slug}
     client = get_client()
@@ -106,7 +103,6 @@ def fetch_env_vars_for_app(slug):
         print(f"Error fetching env vars for app {slug}: {str(e)}")
         return []
 
-# 5. Filter out protected environment variables
 def filter_protected_env_vars(env_vars):
     return [
         {
@@ -118,7 +114,6 @@ def filter_protected_env_vars(env_vars):
         if var["key"] not in PROTECTED_ENV_KEYS
     ]
 
-# 6. Create a new app (mutation)
 def create_new_app(input_data):
     client = get_client()
 
@@ -133,13 +128,12 @@ def create_new_app(input_data):
     try:
         result = client.execute(mutation, variable_values=variables)
         app_data = result["createOneApp"]
-        print(f"✅ App created: {app_data['title']} (ID: {app_data['app_id']})")
+        print(f"App created: {app_data['title']} (ID: {app_data['app_id']})")
         return app_data
     except Exception as e:
-        print(f"❌ Error creating app: {e}")
+        print(f"Error creating app: {e}")
         return None
 
-# 7. Update environment variables for an existing app (mutation)
 def update_app_env_vars(app_id, filtered_env_vars):
     client = get_client()
 
@@ -156,11 +150,10 @@ def update_app_env_vars(app_id, filtered_env_vars):
 
     try:
         result = client.execute(mutation, variable_values=variables)
-        print(f"✅ Updated env vars for app {app_id}")
+        print(f"Updated env vars for app {app_id}")
     except Exception as e:
-        print(f"❌ Error updating env vars for app {app_id}: {e}")
+        print(f"Error updating env vars for app {app_id}: {e}")
 
-# 8. Add services to a newly created app
 def add_services_to_app(app_id, services):
     client = get_client()
 
@@ -178,11 +171,10 @@ def add_services_to_app(app_id, services):
 
         try:
             result = client.execute(mutation, variable_values=variables)
-            print(f"✅ Service {service['name']} added to app {app_id}")
+            print(f"Service {service['name']} added to app {app_id}")
         except Exception as e:
-            print(f"❌ Error adding service {service['name']} to app {app_id}: {e}")
+            print(f"Error adding service {service['name']} to app {app_id}: {e}")
 
-# 9. Clone an app including its services and environment variables
 def clone_app(app_data):
     # Fetch original app's details
     slug = app_data["slug"]
@@ -206,15 +198,15 @@ def clone_app(app_data):
         "python_version": "3.10",
     }
 
-    # 1. Create the new app
+    # Create the new app
     new_app = create_new_app(input_data)
     if not new_app:
         return
 
-    # 2. Update the environment variables for the new app
+    # Update the environment variables for the new app
     update_app_env_vars(new_app["app_id"], filtered_env_vars)
 
-    # 3. Add services to the new app
+    # Add services to the new app
     add_services_to_app(new_app["app_id"], original_services)
 
 # Main function to drive the cloning process
