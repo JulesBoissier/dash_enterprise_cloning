@@ -27,6 +27,19 @@ PROTECTED_ENV_KEYS = {
     "DATABASE_URL",
 }
 
+DEURL = os.getenv("DEURL")
+username = os.getenv("USERNAME")
+password = os.getenv("PASSWORD")
+
+old_client = get_client(DEURL, username, password)
+
+DEURL = os.getenv("DEURL")
+username = os.getenv("USERNAME")
+password = os.getenv("PASSWORD")
+
+new_client = get_client(DEURL, username, password)
+
+
 def run_command(command, cwd=None):
     result = subprocess.run(command, shell=True, cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -45,7 +58,7 @@ def run_command(command, cwd=None):
         print("\n".join(cleaned_lines))
 
 def fetch_all_apps():
-    client = get_client()
+    client = old_client
     all_apps = []
     last_created_at = None
 
@@ -78,16 +91,22 @@ def fetch_all_apps():
         return []
 
 def fetch_services_for_app(slug):
+
+    client = old_client
+
     try:
-        result = get_client().execute(gql(GET_APP_SERVICES), variable_values={"slug": slug})
+        result = client.execute(gql(GET_APP_SERVICES), variable_values={"slug": slug})
         return result["app"]["services"]
     except Exception as e:
         print(f"Error fetching services for app {slug}: {str(e)}")
         return []
 
 def fetch_env_vars_for_app(slug):
+
+    client = old_client
+
     try:
-        result = get_client().execute(gql(GET_ENV_VARIABLES), variable_values={"slug": slug})
+        result = client.execute(gql(GET_ENV_VARIABLES), variable_values={"slug": slug})
         return result["app"]["environment_variables"]
     except Exception as e:
         print(f"Error fetching env vars for app {slug}: {str(e)}")
@@ -100,16 +119,21 @@ def filter_protected_env_vars(env_vars):
     ]
 
 def create_new_app(input_data):
+
+    client = new_client
     try:
-        result = get_client().execute(gql(CREATE_APP_MUTATION), variable_values={"input": {"app": input_data}})
+        result = client.execute(gql(CREATE_APP_MUTATION), variable_values={"input": {"app": input_data}})
         return result["createOneApp"]
     except Exception as e:
         print(f"Error creating app: {e}")
         return None
 
 def update_app_env_vars(app_id, filtered_env_vars):
+
+    client = new_client
+
     try:
-        get_client().execute(gql(UPDATE_APP_MUTATION), variable_values={
+        client.execute(gql(UPDATE_APP_MUTATION), variable_values={
             "input": {
                 "id": app_id,
                 "app": {"environment_variables": filtered_env_vars}
@@ -120,9 +144,12 @@ def update_app_env_vars(app_id, filtered_env_vars):
         print(f"Error updating env vars for app {app_id}: {e}")
 
 def add_services_to_app(app_id, services):
+
+    client = new_client
+
     for service in services:
         try:
-            get_client().execute(gql(CREATE_SERVICE_MUTATION), variable_values={
+            client.execute(gql(CREATE_SERVICE_MUTATION), variable_values={
                 "input": {
                     "type": service["type"],
                     "name": service["name"],
@@ -135,13 +162,17 @@ def add_services_to_app(app_id, services):
             print(f"Error adding service {service['name']} to app {app_id}: {e}")
 
 def clone_and_deploy_repo(slug):
-    de_url = os.getenv("DEURL", "https://tam.plotly.host")
-    repo_url = f"https://{de_url}/GIT/{slug}"
+    old_de_url = os.getenv("DEURL", "https://tam.plotly.host")
+    new_de_url = os.getenv("DEURL", "https://tam.plotly.host")
+    repo_url = f"https://{old_de_url}/GIT/{slug}"
     clone_dir = f"./repos/{slug}-repo"
     new_slug = f"{slug}-copy"
 
     print(f"🔁 Cloning repo from {repo_url} into {clone_dir}")
     run_command(f"git clone {repo_url} {clone_dir}")
+
+    print(f"🔁 Logging in to {new_de_url}")
+    run_command(f"de --host {new_de_url} login")
 
     print(f"🚀 Deploying app to Dash Enterprise with slug '{new_slug}'")
     run_command(f"de deploy {clone_dir} --name {new_slug} -y")

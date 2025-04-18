@@ -7,17 +7,17 @@ from keycloak import KeycloakOpenID
 # Load environment variables from .env file
 load_dotenv()
 
-def get_client():
+def get_client(url, username, password):
     try:
         DEURL = os.getenv("DEURL")
         username = os.getenv("USERNAME")
         password = os.getenv("PASSWORD")
 
-        if not all([DEURL, username, password]):
+        if not all([url, username, password]):
             raise EnvironmentError("Missing required env variables")
 
-        keycloak_url = f"https://auth-{DEURL}/auth/"
-        api_url = f"https://api-{DEURL}/graphql"
+        keycloak_url = f"https://auth-{url}/auth/"
+        api_url = f"https://api-{url}/graphql"
 
         keycloak_openid = KeycloakOpenID(
             server_url=keycloak_url, client_id="dash", realm_name="dash"
